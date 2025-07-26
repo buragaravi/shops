@@ -37,6 +37,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "590f1d03-d1fb-4166-b20c-80f9035247b4"
+      }
+    },
+    "owner": "raviburaga"
   }
 }

@@ -1,29 +1,47 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack } from "expo-router";
+import { Provider } from 'react-redux';
+import { store } from '../store';
 import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+import { ThemeProvider } from '../theme/ThemeProvider';
+import { AuthProvider, useAuth } from '../contexts/AuthContext';
+import { CartWishlistProvider } from '../contexts/CartWishlistContext';
+import { AppProvider } from '../contexts/AppContext';
+import SplashScreen from '../components/SplashScreen';
 
-import { useColorScheme } from '@/hooks/useColorScheme';
-
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
-  }
+function AppContent() {
+  const { loading, loadingMessage } = useAuth();
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+    <>
       <StatusBar style="auto" />
-    </ThemeProvider>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="auth" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="product/[id]" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="combo/[id]" options={{ presentation: 'modal' }} />
+      </Stack>
+      {loading && (
+        <SplashScreen 
+          isLoading={loading} 
+          message={loadingMessage || "Welcome back! Signing you in..."}
+        />
+      )}
+    </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <Provider store={store}>
+      <ThemeProvider>
+        <AuthProvider>
+          <AppProvider>
+            <CartWishlistProvider>
+              <AppContent />
+            </CartWishlistProvider>
+          </AppProvider>
+        </AuthProvider>
+      </ThemeProvider>
+    </Provider>
   );
 }
