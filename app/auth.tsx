@@ -18,6 +18,7 @@ import { API_BASE_URL, API_ENDPOINTS } from '../constants';
 import { useAuth } from '../contexts/AuthContext';
 import ReferralCodeInput from '../components/ReferralCodeInput';
 import TokenStorage from '../utils/tokenStorage';
+import DebugStorage from '../utils/debugStorage';
 
 interface LoginForm {
   username: string;
@@ -43,6 +44,19 @@ export default function AuthScreen() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [validReferralCode, setValidReferralCode] = useState(false);
+
+  // Test storage on component mount
+  React.useEffect(() => {
+    const testStorage = async () => {
+      console.log('🔍 DEBUG: Testing storage on auth screen mount...');
+      const testPassed = await DebugStorage.testStorageCycle();
+      if (!testPassed) {
+        console.log('⚠️ WARNING: Storage test failed on', Platform.OS);
+      }
+      await DebugStorage.logAllAuthData();
+    };
+    testStorage();
+  }, []);
 
   // Login form state
   const [loginForm, setLoginForm] = useState<LoginForm>({
@@ -77,51 +91,39 @@ export default function AuthScreen() {
         return;
       }
 
-      // Make API call directly (not using AuthContext for now)
-      const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.LOGIN}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          username: loginForm.username, 
-          password: loginForm.password 
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
-      }
-
-      // Store token and user data using TokenStorage
-      await TokenStorage.storeAuthData({
-        token: data.token,
-        user: data.user,
-        userType: 'user'
-      });
-
-      // Store credentials for remember me if needed
-      await TokenStorage.storeCredentials(
+      // Use AuthContext login method for proper state management
+      const success = await login(
         loginForm.username, 
         loginForm.password, 
-        rememberMe
+        rememberMe, 
+        false
       );
 
-      Alert.alert('Success', 'Login successful!', [
-        {
-          text: 'OK',
-          onPress: () => {
-            // Navigate back to previous screen or home
-            if (router.canGoBack()) {
-              router.back();
-            } else {
-              router.replace('/');
-            }
+      // Debug storage after login attempt
+      console.log('🔍 DEBUG: Login attempt completed, checking storage...');
+      await DebugStorage.logAllAuthData();
+
+      if (success) {
+        Alert.alert('Success', 'Login successful!', [
+          {
+            text: 'OK',
+            onPress: async () => {
+              // Final debug check before navigation
+              console.log('🔍 DEBUG: Before navigation, final storage check...');
+              await DebugStorage.logAllAuthData();
+              
+              // Navigate back to previous screen or home
+              if (router.canGoBack()) {
+                router.back();
+              } else {
+                router.replace('/');
+              }
+            },
           },
-        },
-      ]);
+        ]);
+      } else {
+        throw new Error('Login failed');
+      }
     } catch (error: any) {
       console.error('Login error:', error);
       Alert.alert('Login Failed', error.message || 'An error occurred during login');

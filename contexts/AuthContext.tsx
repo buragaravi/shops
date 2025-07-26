@@ -63,7 +63,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Add a periodic check for auth status changes
   useEffect(() => {
     const checkInterval = setInterval(async () => {
-      // Only check if we're currently not authenticated
+      // Only check if we're currently not authenticated and not loading
       if (!isAuthenticated && !loading) {
         const storedToken = await AsyncStorage.getItem('userToken');
         const storedUser = await AsyncStorage.getItem('userProfile');
@@ -79,10 +79,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             console.log('✅ Auth state updated from periodic check');
           } catch (error) {
             console.error('Error parsing stored user data:', error);
+            // Clear corrupted data
+            await clearAuthData();
           }
         }
       }
-    }, 2000); // Check every 2 seconds
+    }, 5000); // Check every 5 seconds (reduced frequency)
 
     return () => clearInterval(checkInterval);
   }, [isAuthenticated, loading]);
@@ -227,6 +229,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       await Promise.all(storagePromises);
 
+      // Verify storage was successful (important for iOS)
+      const verifyStorage = async () => {
+        try {
+          const storedToken = await AsyncStorage.getItem('userToken');
+          const storedUser = await AsyncStorage.getItem('userProfile');
+          const storedAuth = await AsyncStorage.getItem('isAuthenticated');
+          
+          console.log('🔍 Storage verification - Token:', !!storedToken, 'User:', !!storedUser, 'Auth:', storedAuth);
+          
+          if (!storedToken || !storedUser || storedAuth !== 'true') {
+            console.log('⚠️ Storage verification failed, retrying...');
+            // Retry storage for iOS compatibility
+            await Promise.all([
+              AsyncStorage.setItem('userToken', data.token),
+              AsyncStorage.setItem('userProfile', JSON.stringify(data.user)),
+              AsyncStorage.setItem('isAuthenticated', 'true'),
+            ]);
+          }
+        } catch (error) {
+          console.error('Storage verification error:', error);
+        }
+      };
+
+      await verifyStorage();
+
       // Update state immediately
       console.log('🔄 Updating AuthContext state...');
       console.log('📊 Login data received:', { 
@@ -249,7 +276,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(data.user);
         setToken(data.token);
         console.log('🔄 Forced state update completed');
-      }, 100);
+      }, 50); // Reduced delay for better UX
 
       if (!isAutoLogin) {
         console.log('Login successful for:', username);
@@ -322,7 +349,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       console.log('🧹 Clearing auth data...');
       console.log('📍 clearAuthData called - this will set isAuthenticated to false');
-      console.trace('🔍 Call stack for clearAuthData:');
+      
+      // Clear all auth-related storage
       await Promise.all([
         AsyncStorage.removeItem('userToken'),
         AsyncStorage.removeItem('userProfile'),
@@ -330,6 +358,31 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         AsyncStorage.removeItem('remember_me'),
         AsyncStorage.removeItem('stored_credentials'),
       ]);
+
+      // Verify storage was cleared (important for iOS)
+      const verifyClearing = async () => {
+        try {
+          const remainingToken = await AsyncStorage.getItem('userToken');
+          const remainingUser = await AsyncStorage.getItem('userProfile');
+          const remainingAuth = await AsyncStorage.getItem('isAuthenticated');
+          
+          if (remainingToken || remainingUser || remainingAuth) {
+            console.log('⚠️ Storage clearing verification failed, retrying...');
+            // Retry clearing for iOS compatibility
+            await AsyncStorage.multiRemove([
+              'userToken',
+              'userProfile', 
+              'isAuthenticated',
+              'remember_me',
+              'stored_credentials'
+            ]);
+          }
+        } catch (error) {
+          console.error('Storage clearing verification error:', error);
+        }
+      };
+
+      await verifyClearing();
 
       setToken(null);
       setUser(null);
