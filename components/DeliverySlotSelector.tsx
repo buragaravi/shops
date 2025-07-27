@@ -85,7 +85,7 @@ const DeliverySlotSelector: React.FC<DeliverySlotSelectorProps> = ({
       setLoadingTimeSlots(true);
       try {
         const token = await TokenStorage.getToken();
-        const response = await fetch('https://indiraa1-backend.onrender.com/api/delivery-slots/time-slots', {
+        const response = await fetch('http://localhost:5001/api/delivery-slots/time-slots', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
