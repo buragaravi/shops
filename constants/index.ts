@@ -1,6 +1,6 @@
 // API Base URL - adjust based on your backend deploymen
-export const API_BASE_URL = 'http://192.168.3.129:5001';
-//export const API_BASE_URL = 'http://localhost:5001';
+// export const API_BASE_URL = 'http://192.168.3.184:5001';
+export const API_BASE_URL = 'https://indiraa1-backend.onrender.com';
 
 // API Endpoints
 export const API_ENDPOINTS = {
