@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useReducer, useEffect } from 'react';
 import { Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAuth } from './AuthContext';
 import ApiService from '../services/apiService';
 import { API_BASE_URL, API_ENDPOINTS } from '../constants';
-import type { Product, ProductVariant, CartItem, WishlistItem, Order, WalletBalance, Transaction } from '../services/apiService';
+import type { Product, ProductVariant, CartItem, WishlistItem, Order, WalletBalance, Transaction, ComboPack } from '../services/apiService';
 import TokenStorage from '../utils/tokenStorage';
 
 // Types
@@ -25,6 +26,11 @@ interface AppState {
   featuredProducts: Product[];
   categories: string[];
   
+  // Combo Packs
+  comboPacks: ComboPack[];
+  featuredComboPacks: ComboPack[];
+  comboPackWishlist: ComboPack[];
+  
   // Cart & Wishlist
   cartItems: CartItem[];
   wishlistItems: WishlistItem[];
@@ -42,6 +48,7 @@ interface AppState {
   // UI State
   loading: {
     products: boolean;
+    comboPacks: boolean;
     cart: boolean;
     wishlist: boolean;
     orders: boolean;
@@ -63,6 +70,9 @@ type AppAction =
   | { type: 'SET_PRODUCTS'; payload: Product[] }
   | { type: 'SET_FEATURED_PRODUCTS'; payload: Product[] }
   | { type: 'SET_CATEGORIES'; payload: string[] }
+  | { type: 'SET_COMBO_PACKS'; payload: ComboPack[] }
+  | { type: 'SET_FEATURED_COMBO_PACKS'; payload: ComboPack[] }
+  | { type: 'SET_COMBO_PACK_WISHLIST'; payload: ComboPack[] }
   | { type: 'SET_CART'; payload: { items: CartItem[]; total: number } }
   | { type: 'SET_WISHLIST'; payload: WishlistItem[] }
   | { type: 'SET_ORDERS'; payload: Order[] }
@@ -76,6 +86,8 @@ type AppAction =
   | { type: 'SET_ERROR'; payload: { key: keyof AppState['errors']; value: string | null } }
   | { type: 'ADD_TO_WISHLIST'; payload: WishlistItem }
   | { type: 'REMOVE_FROM_WISHLIST'; payload: string }
+  | { type: 'ADD_COMBO_TO_WISHLIST'; payload: ComboPack }
+  | { type: 'REMOVE_COMBO_FROM_WISHLIST'; payload: string }
   | { type: 'CLEAR_CART' }
   | { type: 'CLEAR_WISHLIST' }
   | { type: 'LOGOUT' };
@@ -87,6 +99,9 @@ const initialState: AppState = {
   products: [],
   featuredProducts: [],
   categories: [],
+  comboPacks: [],
+  featuredComboPacks: [],
+  comboPackWishlist: [],
   cartItems: [],
   wishlistItems: [],
   cartTotal: 0,
@@ -97,6 +112,7 @@ const initialState: AppState = {
   transactions: [],
   loading: {
     products: false,
+    comboPacks: false,
     cart: false,
     wishlist: false,
     orders: false,
@@ -136,6 +152,24 @@ function appReducer(state: AppState, action: AppAction): AppState {
       return {
         ...state,
         categories: action.payload,
+      };
+
+    case 'SET_COMBO_PACKS':
+      return {
+        ...state,
+        comboPacks: action.payload,
+      };
+
+    case 'SET_FEATURED_COMBO_PACKS':
+      return {
+        ...state,
+        featuredComboPacks: action.payload,
+      };
+
+    case 'SET_COMBO_PACK_WISHLIST':
+      return {
+        ...state,
+        comboPackWishlist: action.payload,
       };
 
     case 'SET_CART':
@@ -203,7 +237,21 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'REMOVE_FROM_WISHLIST':
       return {
         ...state,
-        wishlistItems: state.wishlistItems.filter(item => item.productId._id !== action.payload),
+        wishlistItems: state.wishlistItems.filter(item => 
+          item?.productId?._id !== action.payload
+        ),
+      };
+
+    case 'ADD_COMBO_TO_WISHLIST':
+      return {
+        ...state,
+        comboPackWishlist: [...state.comboPackWishlist, action.payload],
+      };
+
+    case 'REMOVE_COMBO_FROM_WISHLIST':
+      return {
+        ...state,
+        comboPackWishlist: state.comboPackWishlist.filter(item => item._id !== action.payload),
       };
 
     case 'CLEAR_CART':
@@ -258,6 +306,15 @@ interface AppContextType {
   removeFromWishlist: (productId: string) => Promise<void>;
   isInWishlist: (productId: string) => boolean;
   
+  // Combo Pack Actions
+  loadComboPacks: () => Promise<void>;
+  loadFeaturedComboPacks: () => Promise<void>;
+  loadComboPackWishlist: () => Promise<void>;
+  addComboToCart: (comboPackId: string, quantity?: number) => Promise<boolean>;
+  addComboToWishlist: (comboPackId: string) => Promise<boolean>;
+  removeComboFromWishlist: (comboPackId: string) => Promise<void>;
+  isComboInWishlist: (comboPackId: string) => boolean;
+  
   // Order Actions
   loadOrders: () => Promise<void>;
   placeOrder: (orderData: any) => Promise<Order | null>;
@@ -277,6 +334,41 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 // Provider Component
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const { isAuthenticated, user } = useAuth();
+
+  // Sync auth state from AuthContext
+  useEffect(() => {
+    console.log('🔄 AppContext: Syncing auth state from AuthContext', { isAuthenticated, user: !!user });
+    
+    // Convert AuthContext User to AppContext User format
+    let appUser = null;
+    if (user) {
+      appUser = {
+        _id: user.id,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.username, // Assuming username is email
+        phone: user.phone,
+        avatar: undefined
+      };
+    }
+    
+    dispatch({ 
+      type: 'SET_AUTH', 
+      payload: { 
+        isAuthenticated, 
+        user: appUser 
+      } 
+    });
+
+    // Load user-specific data when authenticated
+    if (isAuthenticated && user) {
+      console.log('✅ AppContext: User authenticated, loading user data');
+      loadCart();
+      loadWishlist();
+      loadComboPackWishlist();
+      loadWalletBalance();
+    }
+  }, [isAuthenticated, user]);
 
   // Auth Actions
   const login = async (authData: { token: string; user: User }) => {
@@ -291,6 +383,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // After successful login, immediately load user-specific data
       loadCart();
       loadWishlist();
+      loadComboPackWishlist();
       loadWalletBalance();
     }
   };
@@ -447,18 +540,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Cart Actions
   const loadCart = async () => {
-    if (!state.isAuthenticated) return;
+    console.log('🛒 AppContext: LoadCart called', { 
+      stateAuth: state.isAuthenticated,
+      authContextAuth: isAuthenticated,
+      stateUser: !!state.user,
+      authContextUser: !!user
+    });
+    
+    if (!isAuthenticated || !user) {
+      console.log('❌ AppContext: LoadCart - User not authenticated');
+      return;
+    }
     
     setLoading('cart', true);
     setError('cart', null);
     try {
+      console.log('🔄 AppContext: Calling API getCart');
       const response = await ApiService.getCart();
+      console.log('📋 AppContext: Cart API response:', response);
+      
       if (response.success && response.data) {
         const cartItems = response.data.cart || [];
         // Note: The backend now sends 'qty', so we use it here.
         const total = cartItems.reduce((sum, item) => sum + item.price * item.qty, 0);
         dispatch({ type: 'SET_CART', payload: { items: cartItems, total } });
+        console.log('✅ AppContext: Cart loaded successfully', { itemCount: cartItems.length, total });
       } else {
+        console.log('⚠️ AppContext: Cart API returned no data or failed');
         dispatch({ type: 'SET_CART', payload: { items: [], total: 0 } });
         if (response.error) {
           setError('cart', response.error);
@@ -472,16 +580,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addToCart = async (productId: string, quantity: number = 1, variantId?: string): Promise<boolean> => {
-    if (!state.isAuthenticated) {
+    console.log('🛒 AppContext: AddToCart called', { 
+      productId, 
+      quantity, 
+      variantId, 
+      isAuthenticated: state.isAuthenticated,
+      authContextAuth: isAuthenticated,
+      user: !!state.user,
+      authContextUser: !!user
+    });
+    
+    if (!isAuthenticated || !user) {
+      console.log('❌ AppContext: User not authenticated');
       Alert.alert('Please login to add items to your cart.');
       return false;
     }
+    
     setLoading('cart', true);
     try {
-      await ApiService.addToCart(productId, quantity, variantId);
-      await loadCart(); // Reload the cart from the server for consistency
-      return true;
+      console.log('🔄 AppContext: Calling API addToCart');
+      const response = await ApiService.addToCart(productId, quantity, variantId);
+      console.log('📋 AppContext: API response:', response);
+      
+      if (response.success) {
+        await loadCart(); // Reload the cart from the server for consistency
+        console.log('✅ AppContext: Item added to cart successfully');
+        return true;
+      } else {
+        console.log('❌ AppContext: API returned failure:', response.error);
+        setError('cart', response.error || 'Failed to add to cart');
+        return false;
+      }
     } catch (error) {
+      console.error('❌ AppContext: AddToCart error:', error);
       setError('cart', error instanceof Error ? error.message : 'Failed to add to cart');
       return false;
     } finally {
@@ -593,7 +724,123 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const isInWishlist = (productId: string): boolean => {
-    return state.wishlistItems.some(item => item.productId._id === productId);
+    return state.wishlistItems.some(item => 
+      item?.productId?._id === productId
+    );
+  };
+
+  // Combo Pack Actions
+  const loadComboPacks = async () => {
+    setLoading('comboPacks', true);
+    try {
+      const response = await ApiService.getComboPacks();
+      if (response.success && response.data) {
+        dispatch({ type: 'SET_COMBO_PACKS', payload: response.data.comboPacks || [] });
+      }
+    } catch (error) {
+      console.error('Load combo packs error:', error);
+      setError('general', 'Failed to load combo packs');
+    } finally {
+      setLoading('comboPacks', false);
+    }
+  };
+
+  const loadFeaturedComboPacks = async () => {
+    setLoading('comboPacks', true);
+    try {
+      const response = await ApiService.getFeaturedComboPacks();
+      if (response.success && response.data) {
+        dispatch({ type: 'SET_FEATURED_COMBO_PACKS', payload: response.data.comboPacks || [] });
+      }
+    } catch (error) {
+      console.error('Load featured combo packs error:', error);
+      setError('general', 'Failed to load featured combo packs');
+    } finally {
+      setLoading('comboPacks', false);
+    }
+  };
+
+  const loadComboPackWishlist = async () => {
+    if (!state.isAuthenticated) return;
+    
+    setLoading('wishlist', true);
+    try {
+      const response = await ApiService.getComboPackWishlist();
+      if (response.success && response.data) {
+        dispatch({ type: 'SET_COMBO_PACK_WISHLIST', payload: response.data.wishlist || [] });
+      }
+    } catch (error) {
+      console.error('Load combo pack wishlist error:', error);
+      setError('wishlist', 'Failed to load combo pack wishlist');
+    } finally {
+      setLoading('wishlist', false);
+    }
+  };
+
+  const addComboToWishlist = async (comboPackId: string): Promise<boolean> => {
+    if (!state.isAuthenticated) {
+      Alert.alert('Please log in to add combo packs to your wishlist.');
+      return false;
+    }
+    
+    try {
+      const response = await ApiService.addComboPackToWishlist(comboPackId);
+      if (response.success && response.data) {
+        dispatch({ type: 'ADD_COMBO_TO_WISHLIST', payload: response.data.comboPack });
+        return true;
+      } else {
+        setError('wishlist', response.error || 'Failed to add combo pack to wishlist');
+        return false;
+      }
+    } catch (error) {
+      console.error('Add combo to wishlist error:', error);
+      setError('wishlist', 'Failed to add combo pack to wishlist');
+      return false;
+    }
+  };
+
+  const addComboToCart = async (comboPackId: string, quantity = 1): Promise<boolean> => {
+    if (!state.isAuthenticated) {
+      Alert.alert('Please log in to add combo packs to your cart.');
+      return false;
+    }
+    
+    try {
+      setLoading('cart', true);
+      const response = await ApiService.addComboPackToCart(comboPackId, quantity);
+      if (response.success) {
+        // Reload cart to get updated data
+        await loadCart();
+        return true;
+      } else {
+        setError('cart', response.error || 'Failed to add combo pack to cart');
+        return false;
+      }
+    } catch (error) {
+      console.error('Add combo to cart error:', error);
+      setError('cart', 'Failed to add combo pack to cart');
+      return false;
+    } finally {
+      setLoading('cart', false);
+    }
+  };
+
+  const removeComboFromWishlist = async (comboPackId: string) => {
+    if (!state.isAuthenticated) return;
+    
+    try {
+      const response = await ApiService.removeComboPackFromWishlist(comboPackId);
+      if (response.success) {
+        dispatch({ type: 'REMOVE_COMBO_FROM_WISHLIST', payload: comboPackId });
+      }
+    } catch (error) {
+      console.error('Remove combo from wishlist error:', error);
+      setError('wishlist', 'Failed to remove combo pack from wishlist');
+    }
+  };
+
+  const isComboInWishlist = (comboPackId: string): boolean => {
+    return state.comboPackWishlist.some(combo => combo._id === comboPackId);
   };
 
   // Order Actions
@@ -709,6 +956,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToWishlist,
     removeFromWishlist,
     isInWishlist,
+    loadComboPacks,
+    loadFeaturedComboPacks,
+    loadComboPackWishlist,
+    addComboToCart,
+    addComboToWishlist,
+    removeComboFromWishlist,
+    isComboInWishlist,
     loadOrders,
     placeOrder,
     cancelOrder,

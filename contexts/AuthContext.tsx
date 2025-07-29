@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import { API_BASE_URL, API_ENDPOINTS } from '../constants';
 
 interface User {
@@ -96,7 +97,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setLoadingMessage('Checking authentication...');
       console.log('🔍 Starting authentication check...');
       
+      // Enhanced Android debugging
+      const platform = Platform.OS;
+      console.log('📱 Platform:', platform);
+      
       const storedToken = await AsyncStorage.getItem('userToken');
+      const storedUser = await AsyncStorage.getItem('userProfile');
+      const authFlag = await AsyncStorage.getItem('isAuthenticated');
+      
+      console.log('💾 AsyncStorage Debug:', {
+        platform,
+        hasToken: !!storedToken,
+        tokenLength: storedToken?.length || 0,
+        tokenPreview: storedToken ? `${storedToken.substring(0, 20)}...` : 'null',
+        hasUser: !!storedUser,
+        authFlag,
+        timestamp: new Date().toISOString()
+      });
 
       if (storedToken) {
         console.log('📱 Found stored token. Validating with backend...');
@@ -148,6 +165,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const validateToken = async (authToken: string): Promise<boolean> => {
     try {
       console.log('🔍 Validating token with backend...');
+      console.log('🔑 Token validation request:', {
+        platform: Platform.OS,
+        tokenLength: authToken.length,
+        tokenPreview: `${authToken.substring(0, 20)}...`,
+        endpoint: `${API_BASE_URL}${API_ENDPOINTS.AUTH.PROFILE}`,
+        timestamp: new Date().toISOString()
+      });
+
       const response = await fetch(`${API_BASE_URL}${API_ENDPOINTS.AUTH.PROFILE}`, {
         method: 'GET',
         headers: {
@@ -156,9 +181,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         },
       });
 
+      console.log('📡 Token validation response:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok,
+        platform: Platform.OS
+      });
+
       if (response.ok) {
         const userData = await response.json();
-        console.log('✅ Token validation successful');
+        console.log('✅ Token validation successful', { userId: userData.user?.id || userData.id });
         setUser(userData.user || userData);
         setToken(authToken);
         setIsAuthenticated(true);
@@ -175,6 +207,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error) {
       console.error('Token validation error:', error);
+      console.log('🔍 Validation error details:', {
+        platform: Platform.OS,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        tokenLength: authToken.length
+      });
       // On network errors, keep the user logged in
       console.log('⚠️ Network error during token validation, keeping user logged in');
       return true;

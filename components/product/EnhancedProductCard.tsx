@@ -12,12 +12,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, APP_CONSTANTS } from '../../constants';
 import { useApp } from '../../contexts/AppContext';
-import type { Product, ProductVariant } from '../../services/apiService';
+import { useAuth } from '../../contexts/AuthContext';
+import type { Product, ProductVariant, ComboPack } from '../../services/apiService';
 
 interface EnhancedProductCardProps {
-  product: Product;
+  product: Product | ComboPack;
   index?: number;
-  onPress: (product: Product) => void;
+  onPress: (product: Product | ComboPack) => void;
   onVariantSelect?: (product: Product, actionType: 'cart' | 'buy') => void;
   compact?: boolean;
 }
@@ -32,29 +33,47 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = ({
   onVariantSelect,
   compact = false,
 }) => {
-  const { state, addToCart, addToWishlist, removeFromWishlist, isInWishlist } = useApp();
+  const { state, addToCart, addToWishlist, removeFromWishlist, isInWishlist, addComboToCart, addComboToWishlist, removeComboFromWishlist, isComboInWishlist } = useApp();
+  const { isAuthenticated, user } = useAuth();
   const [loading, setLoading] = useState({
     cart: false,
     wishlist: false,
   });
 
-  const isWishlisted = isInWishlist(product._id);
+  // Early return if product is not valid
+  if (!product || !product._id || !product.name) {
+    console.warn('⚠️ EnhancedProductCard: Invalid product data:', product);
+    return null;
+  }
+
+  // Type guard to check if item is a combo pack
+  const isComboPack = (item: Product | ComboPack): item is ComboPack => {
+    return 'comboPrice' in item;
+  };
+
+  const isWishlisted = isComboPack(product) 
+    ? isComboInWishlist(product._id) 
+    : isInWishlist(product._id);
 
   // Get product image
   const getProductImage = () => {
     if (product?.images && Array.isArray(product.images) && product.images.length > 0) {
-      return product.images[0];
+      return product.images[0] || APP_CONSTANTS.IMAGE_PLACEHOLDER;
     }
     return APP_CONSTANTS.IMAGE_PLACEHOLDER;
   };
 
   // Get display price (handles variants)
   const getDisplayPrice = () => {
+    if (isComboPack(product)) {
+      return `${APP_CONSTANTS.CURRENCY}${product.comboPrice || 0}`;
+    }
+    
     if (product.hasVariants && product.variants?.length) {
-      const availableVariants = product.variants.filter(v => v.stock > 0);
-      if (availableVariants.length === 0) return `${APP_CONSTANTS.CURRENCY}${product.price}`;
+      const availableVariants = product.variants.filter((v: ProductVariant) => v.stock > 0);
+      if (availableVariants.length === 0) return `${APP_CONSTANTS.CURRENCY}${product.price || 0}`;
       
-      const prices = availableVariants.map(v => v.price);
+      const prices = availableVariants.map((v: ProductVariant) => v.price || 0);
       const minPrice = Math.min(...prices);
       const maxPrice = Math.max(...prices);
       
@@ -63,16 +82,20 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = ({
       }
       return `${APP_CONSTANTS.CURRENCY}${minPrice} - ${APP_CONSTANTS.CURRENCY}${maxPrice}`;
     }
-    return `${APP_CONSTANTS.CURRENCY}${product.price}`;
+    return `${APP_CONSTANTS.CURRENCY}${product.price || 0}`;
   };
 
   // Get original price for discount calculation
   const getDisplayOriginalPrice = () => {
+    if (isComboPack(product)) {
+      return product.originalTotalPrice;
+    }
+    
     if (product.hasVariants && product.variants?.length) {
-      const availableVariants = product.variants.filter(v => v.stock > 0 && v.originalPrice);
+      const availableVariants = product.variants.filter((v: ProductVariant) => v.stock > 0 && v.originalPrice);
       if (availableVariants.length === 0) return product.originalPrice;
       
-      const originalPrices = availableVariants.map(v => v.originalPrice!);
+      const originalPrices = availableVariants.map((v: ProductVariant) => v.originalPrice!);
       const minOriginalPrice = Math.min(...originalPrices);
       return minOriginalPrice;
     }
@@ -81,9 +104,13 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = ({
 
   // Get display stock
   const getDisplayStock = () => {
+    if (isComboPack(product)) {
+      return product.stock;
+    }
+    
     if (product.hasVariants && product.variants?.length) {
-      const availableVariants = product.variants.filter(v => v.stock > 0);
-      return availableVariants.reduce((sum, v) => sum + v.stock, 0);
+      const availableVariants = product.variants.filter((v: ProductVariant) => v.stock > 0);
+      return availableVariants.reduce((sum: number, v: ProductVariant) => sum + v.stock, 0);
     }
     return product.stock;
   };
@@ -98,34 +125,69 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = ({
 
   // Get rating
   const getRating = () => {
+    if (isComboPack(product)) {
+      return product.averageRating || 0;
+    }
     return product?.rating || product?.averageRating || 0;
   };
 
   const getReviewCount = () => {
+    if (isComboPack(product)) {
+      return product.totalReviews || 0;
+    }
     return product?.reviewCount || product?.totalReviews || 0;
   };
 
   // Handle add to cart
   const handleAddToCart = async () => {
-    if (!state.isAuthenticated) {
+    console.log('🛒 EnhancedProductCard: Add to cart called', { isAuthenticated, userState: !!user });
+    
+    if (!isAuthenticated || !user) {
+      console.log('❌ EnhancedProductCard: Not authenticated');
       Alert.alert('Authentication Required', 'Please login to add items to cart');
       return;
     }
 
-    // Check if product has variants
+    // Handle combo pack
+    if (isComboPack(product)) {
+      setLoading(prev => ({ ...prev, cart: true }));
+      try {
+        console.log('🔄 EnhancedProductCard: Adding combo pack to cart:', product._id);
+        const success = await addComboToCart(product._id, 1);
+        if (success) {
+          Alert.alert('Success', 'Combo pack added to cart');
+        } else {
+          Alert.alert('Error', 'Failed to add combo pack to cart');
+        }
+      } catch (error) {
+        console.error('❌ EnhancedProductCard: Combo cart error:', error);
+        Alert.alert('Error', 'Failed to add combo pack to cart');
+      } finally {
+        setLoading(prev => ({ ...prev, cart: false }));
+      }
+      return;
+    }
+
+    // Handle regular product with variants
     if (product.hasVariants && product.variants?.length) {
       // Show variant selection popup
-      onVariantSelect?.(product, 'cart');
+      onVariantSelect?.(product as Product, 'cart');
       return;
     }
 
     // Add product without variants
     setLoading(prev => ({ ...prev, cart: true }));
     try {
+      console.log('🔄 EnhancedProductCard: Adding to cart:', product._id);
       const success = await addToCart(product._id, 1);
       if (success) {
         Alert.alert('Success', 'Product added to cart');
+      } else {
+        Alert.alert('Error', 'Failed to add product to cart');
       }
+    } catch (error) {
+      console.error('❌ EnhancedProductCard: Cart error:', error);
+      Alert.alert('Error', 'Failed to add product to cart');
     } finally {
       setLoading(prev => ({ ...prev, cart: false }));
     }
@@ -133,18 +195,32 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = ({
 
   // Handle wishlist toggle
   const handleWishlistToggle = async () => {
-    if (!state.isAuthenticated) {
+    console.log('❤️ EnhancedProductCard: Wishlist toggle called', { isAuthenticated, userState: !!user });
+    
+    if (!isAuthenticated || !user) {
+      console.log('❌ EnhancedProductCard: Not authenticated for wishlist');
       Alert.alert('Authentication Required', 'Please login to add items to wishlist');
       return;
     }
 
     setLoading(prev => ({ ...prev, wishlist: true }));
     try {
-      if (isWishlisted) {
-        await removeFromWishlist(product._id);
+      if (isComboPack(product)) {
+        if (isWishlisted) {
+          await removeComboFromWishlist(product._id);
+        } else {
+          await addComboToWishlist(product._id);
+        }
       } else {
-        await addToWishlist(product._id);
+        if (isWishlisted) {
+          await removeFromWishlist(product._id);
+        } else {
+          await addToWishlist(product._id);
+        }
       }
+    } catch (error) {
+      console.error('❌ EnhancedProductCard: Wishlist error:', error);
+      Alert.alert('Error', 'Failed to update wishlist');
     } finally {
       setLoading(prev => ({ ...prev, wishlist: false }));
     }
@@ -152,13 +228,22 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = ({
 
   // Handle buy now
   const handleBuyNow = () => {
-    if (!state.isAuthenticated) {
+    console.log('🛍️ EnhancedProductCard: Buy now called', { isAuthenticated, userState: !!user });
+    
+    if (!isAuthenticated || !user) {
+      console.log('❌ EnhancedProductCard: Not authenticated for buy now');
       Alert.alert('Authentication Required', 'Please login to buy products');
       return;
     }
 
+    if (isComboPack(product)) {
+      // For combo packs, add to cart and navigate to cart
+      handleAddToCart();
+      return;
+    }
+
     if (product.hasVariants && product.variants?.length) {
-      onVariantSelect?.(product, 'buy');
+      onVariantSelect?.(product as Product, 'buy');
       return;
     }
 
@@ -256,10 +341,15 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = ({
             )}
           </View>
 
-          {/* Variant indicator */}
-          {product.hasVariants && product.variants?.length && (
+          {/* Variant indicator or Combo Pack indicator */}
+          {!isComboPack(product) && product.hasVariants && product.variants?.length && (
             <Text style={styles.variantIndicator}>
               {product.variants.length} variants available
+            </Text>
+          )}
+          {isComboPack(product) && product.products && (
+            <Text style={styles.comboIndicator}>
+              {product.products.length} products included
             </Text>
           )}
         </View>
@@ -281,6 +371,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = ({
                 <Ionicons name="cart" size={16} color={COLORS.WHITE} />
                 <Text style={styles.addToCartText}>
                   {isOutOfStock ? 'Out of Stock' : 
+                   isComboPack(product) ? 'Add to Cart' :
                    product.hasVariants ? 'Select & Add' : 'Add to Cart'}
                 </Text>
               </>
@@ -434,6 +525,12 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: COLORS.TEXT_SECONDARY,
     fontStyle: 'italic',
+  },
+  comboIndicator: {
+    fontSize: 11,
+    color: COLORS.SUCCESS,
+    fontStyle: 'italic',
+    fontWeight: '500',
   },
   actionButtons: {
     padding: 12,

@@ -80,7 +80,7 @@ const ReturnOrderModal: React.FC<ReturnOrderModalProps> = ({
     setError(null);
     try {
       const token = await TokenStorage.getToken();
-      const response = await fetch(`http://192.168.3.184:5001/api/products/orders/user/${orderId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/products/orders/user/${orderId}`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -123,7 +123,7 @@ const ReturnOrderModal: React.FC<ReturnOrderModalProps> = ({
   const checkReturnEligibility = async () => {
     try {
       const token = await TokenStorage.getToken();
-      const response = await fetch(`https://indiraa1-backend.onrender.com/api/returns/orders/${orderId}/eligibility`, {
+      const response = await fetch(`${API_BASE_URL}/api/returns/orders/${orderId}/eligibility`, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -226,7 +226,7 @@ const ReturnOrderModal: React.FC<ReturnOrderModalProps> = ({
         } as any);
       });
 
-      const response = await fetch(`https://indiraa1-backend.onrender.com/api/returns/create`, {
+      const response = await fetch(`${API_BASE_URL}/api/returns/create`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`

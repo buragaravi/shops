@@ -1,6 +1,6 @@
 // API Base URL - adjust based on your backend deploymen
-// export const API_BASE_URL = 'http://192.168.3.184:5001';
-export const API_BASE_URL = 'https://indiraa1-backend.onrender.com';
+export const API_BASE_URL = 'http://192.168.3.125:5001';
+// export const API_BASE_URL = 'https://indiraa1-backend.onrender.com';
 
 // API Endpoints
 export const API_ENDPOINTS = {
@@ -30,6 +30,16 @@ export const API_ENDPOINTS = {
     BY_ID: (id: string) => `/api/combo-packs/id/${id}`,
     BY_SLUG: (slug: string) => `/api/combo-packs/slug/${slug}`,
     FEATURED: '/api/combo-packs/featured',
+    // Cart operations for combo packs
+    CART: {
+      ADD: '/api/combo-packs/cart/add',
+    },
+    // Wishlist operations for combo packs
+    WISHLIST: {
+      GET: '/api/combo-packs/wishlist/me',
+      ADD: '/api/combo-packs/wishlist/add',
+      REMOVE: '/api/combo-packs/wishlist/remove',
+    },
   },
   
   // Categories

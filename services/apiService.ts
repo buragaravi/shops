@@ -36,6 +36,38 @@ interface Product {
   totalReviews?: number;
 }
 
+interface ComboPack {
+  _id: string;
+  name: string;
+  description: string;
+  comboPrice: number;
+  originalTotalPrice: number;
+  discountAmount: number;
+  discountPercentage: number;
+  mainImage?: string;
+  images?: string[];
+  products: Array<{
+    _id: string;
+    productId: any;
+    productName: string;
+    originalPrice: number;
+    quantity: number;
+    variantId?: string | null;
+    variantName?: string | null;
+    images?: string[];
+    isAvailable: boolean;
+  }>;
+  stock: number;
+  isActive: boolean;
+  badgeText?: string;
+  averageRating?: number;
+  totalReviews?: number;
+  category?: string;
+  featured?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface CartItem {
   _id: string; // cart item id
   productId: string;
@@ -142,15 +174,27 @@ class ApiService {
     try {
       const token = await TokenStorage.getToken();
       
+      // Enhanced logging for debugging Android token issues
+      console.log(`🔍 API Debug Info:`, {
+        endpoint,
+        hasToken: !!token,
+        tokenLength: token?.length || 0,
+        platform: require('react-native').Platform.OS,
+        timestamp: new Date().toISOString()
+      });
+      
       const defaultHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
       };
 
       if (token) {
         defaultHeaders.Authorization = `Bearer ${token}`;
+        console.log(`🔐 Authorization header set with token (${token.substring(0, 10)}...)`);
+      } else {
+        console.log('⚠️ No token found for API request');
       }
 
-      console.log(`API Request: ${API_BASE_URL}${endpoint}`);
+      console.log(`📡 API Request: ${API_BASE_URL}${endpoint}`);
       
       const response = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
@@ -495,7 +539,45 @@ class ApiService {
   static async getOrderReturns(orderId: string): Promise<ApiResponse<{ returns: any[] }>> {
     return this.makeRequest(`/api/orders/${orderId}/returns`);
   }
+
+  // Combo Pack APIs
+  static async getComboPacks(): Promise<ApiResponse<{ comboPacks: ComboPack[] }>> {
+    return this.makeRequest<{ comboPacks: ComboPack[] }>(API_ENDPOINTS.COMBO_PACKS.ALL);
+  }
+
+  static async getFeaturedComboPacks(limit = 6): Promise<ApiResponse<{ comboPacks: ComboPack[] }>> {
+    return this.makeRequest<{ comboPacks: ComboPack[] }>(`${API_ENDPOINTS.COMBO_PACKS.FEATURED}?limit=${limit}`);
+  }
+
+  static async getComboPackById(id: string): Promise<ApiResponse<{ comboPack: ComboPack }>> {
+    return this.makeRequest<{ comboPack: ComboPack }>(API_ENDPOINTS.COMBO_PACKS.BY_ID(id));
+  }
+
+  static async addComboPackToCart(comboPackId: string, quantity = 1): Promise<ApiResponse<any>> {
+    return this.makeRequest('/api/combo-packs/cart/add', {
+      method: 'POST',
+      body: JSON.stringify({ comboPackId, qty: quantity }),
+    });
+  }
+
+  static async addComboPackToWishlist(comboPackId: string): Promise<ApiResponse<any>> {
+    return this.makeRequest('/api/combo-packs/wishlist/add', {
+      method: 'POST',
+      body: JSON.stringify({ comboPackId }),
+    });
+  }
+
+  static async removeComboPackFromWishlist(comboPackId: string): Promise<ApiResponse<any>> {
+    return this.makeRequest('/api/combo-packs/wishlist/remove', {
+      method: 'POST',
+      body: JSON.stringify({ comboPackId }),
+    });
+  }
+
+  static async getComboPackWishlist(): Promise<ApiResponse<{ wishlist: ComboPack[] }>> {
+    return this.makeRequest<{ wishlist: ComboPack[] }>('/api/combo-packs/wishlist/me');
+  }
 }
 
 export default ApiService;
-export type { Product, ProductVariant, CartItem, WishlistItem, WalletBalance, Transaction };
+export type { Product, ProductVariant, CartItem, WishlistItem, WalletBalance, Transaction, ComboPack };

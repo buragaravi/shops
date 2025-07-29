@@ -85,7 +85,7 @@ const DeliverySlotSelector: React.FC<DeliverySlotSelectorProps> = ({
       setLoadingTimeSlots(true);
       try {
         const token = await TokenStorage.getToken();
-        const response = await fetch('http://192.168.3.184:5001/api/delivery-slots/time-slots', {
+        const response = await fetch(`${API_BASE_URL}/api/delivery-slots/time-slots`, {
           headers: {
             'Authorization': `Bearer ${token}`
           }

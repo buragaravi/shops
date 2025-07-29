@@ -71,9 +71,15 @@ export interface ComboPack {
 }
 
 export interface ComboProduct {
-  product: Product;
+  _id: string;
+  productId: any;
+  productName: string;
+  originalPrice: number;
   quantity: number;
-  variant?: ProductVariant;
+  variantId?: string | null;
+  variantName?: string | null;
+  images?: string[];
+  isAvailable: boolean;
 }
 
 export interface Banner {

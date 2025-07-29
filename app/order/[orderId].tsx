@@ -777,7 +777,7 @@ const OrderDetailScreen: React.FC = () => {
 
                   {/* Action Button */}
                   <TouchableOpacity
-                    onPress={navigateToReturns}
+                    onPress={() => router.push(`/return/${returnRequest._id}` as any)}
                     style={styles.returnViewButton}
                   >
                     <Ionicons name="eye-outline" size={16} color="#7c3aed" />

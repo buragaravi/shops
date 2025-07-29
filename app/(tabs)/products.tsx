@@ -22,7 +22,7 @@ import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
 import EnhancedProductCard from '../../components/product/EnhancedProductCard';
 import VariantPopup from '../../components/VariantPopup';
-import type { Product, ProductVariant } from '../../services/apiService';
+import type { Product, ProductVariant, ComboPack } from '../../services/apiService';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -53,13 +53,17 @@ export default function ProductsTabScreen() {
     loadProducts, 
     loadCategories,
     addToCart,
-    searchProducts 
+    searchProducts,
+    loadComboPacks,
+    loadFeaturedComboPacks,
+    loadWishlist,
+    loadComboPackWishlist
   } = useApp();
   
   // State
   const [searchQuery, setSearchQuery] = useState(initialSearch || '');
   const [refreshing, setRefreshing] = useState(false);
-  const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
+  const [filteredItems, setFilteredItems] = useState<(Product | ComboPack)[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>(initialCategory || 'All');
   const [selectedPriceRange, setSelectedPriceRange] = useState<string>('');
   const [selectedRating, setSelectedRating] = useState<number>(0);
@@ -83,16 +87,46 @@ export default function ProductsTabScreen() {
 
   useEffect(() => {
     filterAndSortProducts();
-  }, [state.products, selectedCategory, searchQuery, selectedPriceRange, selectedRating, selectedSort]);
+  }, [state.products, state.comboPacks, selectedCategory, searchQuery, selectedPriceRange, selectedRating, selectedSort]);
+
+  // Reload wishlist when authentication state changes
+  useEffect(() => {
+    const loadWishlistData = async () => {
+      if (isAuthenticated && user) {
+        console.log('🛍️ Authentication state changed - loading wishlist data...');
+        try {
+          await Promise.all([
+            loadWishlist(),
+            loadComboPackWishlist(),
+          ]);
+        } catch (error) {
+          console.error('Error loading wishlist data:', error);
+        }
+      }
+    };
+
+    loadWishlistData();
+  }, [isAuthenticated, user]);
 
   const loadInitialData = async () => {
     try {
       console.log('📱 Loading products screen data...');
-      // Load products and categories
+      // Load products, categories, and combo packs
       await Promise.all([
         loadProducts(),
         loadCategories(), // This will extract categories from products
+        loadComboPacks(),
+        loadFeaturedComboPacks(),
       ]);
+
+      // Load wishlist data if user is authenticated
+      if (isAuthenticated && user) {
+        console.log('🛍️ Loading wishlist data for authenticated user...');
+        await Promise.all([
+          loadWishlist(),
+          loadComboPackWishlist(),
+        ]);
+      }
     } catch (error) {
       console.error('Error loading initial data:', error);
       Alert.alert('Error', 'Failed to load data. Please try again.');
@@ -111,59 +145,111 @@ export default function ProductsTabScreen() {
   };
 
   const filterAndSortProducts = () => {
-    let filtered = [...state.products];
+    console.log('🔍 Filtering products - current state:', {
+      products: state.products.length,
+      comboPacks: state.comboPacks.length,
+      selectedCategory,
+      searchQuery
+    });
+    
+    let combinedItems: (Product | ComboPack)[] = [];
 
-    // Filter by category
-    if (selectedCategory !== 'All') {
-      filtered = filtered.filter(product => product.category === selectedCategory);
+    // If "Combo Packs" category is selected, show only combo packs
+    if (selectedCategory === 'Combo Packs') {
+      combinedItems = [...state.comboPacks];
+      console.log('📦 Showing only combo packs:', combinedItems.length);
+    } else {
+      // Add combo packs first, then products
+      combinedItems = [...state.comboPacks];
+      
+      let filteredProducts = [...state.products];
+      
+      // Filter products by category
+      if (selectedCategory !== 'All') {
+        filteredProducts = filteredProducts.filter(product => product.category === selectedCategory);
+      }
+
+      // Add filtered products after combo packs
+      combinedItems = [...combinedItems, ...filteredProducts];
+      console.log('🔄 Combined items:', {
+        comboPacks: state.comboPacks.length,
+        filteredProducts: filteredProducts.length,
+        total: combinedItems.length
+      });
     }
 
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = filtered.filter(product =>
-        product.name.toLowerCase().includes(query) ||
-        product.description?.toLowerCase().includes(query) ||
-        product.category?.toLowerCase().includes(query)
-      );
+      combinedItems = combinedItems.filter(item => {
+        // Check if it's a combo pack or product
+        if ('comboPrice' in item) {
+          // It's a combo pack
+          return item.name.toLowerCase().includes(query) ||
+                 item.description?.toLowerCase().includes(query);
+        } else {
+          // It's a product
+          return item.name.toLowerCase().includes(query) ||
+                 item.description?.toLowerCase().includes(query) ||
+                 item.category?.toLowerCase().includes(query);
+        }
+      });
     }
 
     // Filter by price range
     if (selectedPriceRange) {
       const range = priceRanges.find(r => r.id === selectedPriceRange)?.value;
       if (range && typeof range === 'object') {
-        filtered = filtered.filter(product => {
-          const price = product.originalPrice || product.price;
+        combinedItems = combinedItems.filter(item => {
+          const price = 'comboPrice' in item ? item.comboPrice : (item.originalPrice || item.price);
           return price >= range.min && price <= range.max;
         });
       }
     }
 
-    // Filter by rating
+    // Filter by rating (only applies to products)
     if (selectedRating > 0) {
-      filtered = filtered.filter(product => (product.rating || 0) >= selectedRating);
+      combinedItems = combinedItems.filter(item => {
+        if ('comboPrice' in item) {
+          return true; // Keep all combo packs when rating filter is applied
+        } else {
+          return (item.rating || 0) >= selectedRating;
+        }
+      });
     }
 
-    // Sort products
-    filtered.sort((a, b) => {
+    // Sort items
+    combinedItems.sort((a, b) => {
+      const aPrice = 'comboPrice' in a ? a.comboPrice : (a.originalPrice || a.price);
+      const bPrice = 'comboPrice' in b ? b.comboPrice : (b.originalPrice || b.price);
+      const aRating = 'comboPrice' in a ? 0 : (a.rating || 0);
+      const bRating = 'comboPrice' in b ? 0 : (b.rating || 0);
+
       switch (selectedSort) {
         case 'price-asc':
-          return (a.originalPrice || a.price) - (b.originalPrice || b.price);
+          return aPrice - bPrice;
         case 'price-desc':
-          return (b.originalPrice || b.price) - (a.originalPrice || a.price);
+          return bPrice - aPrice;
         case 'rating-desc':
-          return (b.rating || 0) - (a.rating || 0);
+          return bRating - aRating;
         case 'name-asc':
           return a.name.localeCompare(b.name);
         case 'newest':
-          return new Date(b._id).getTime() - new Date(a._id).getTime(); // Using _id as creation time proxy
+          // Use createdAt if available (for combo packs), otherwise fallback to comparing _id strings
+          const aDate = 'createdAt' in a && a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const bDate = 'createdAt' in b && b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          if (aDate && bDate) {
+            return bDate - aDate;
+          }
+          // Fallback to string comparison of _id
+          return (b._id || '').localeCompare(a._id || '');
         case 'featured':
         default:
           return 0;
       }
     });
 
-    setFilteredProducts(filtered);
+    setFilteredItems(combinedItems);
   };
 
   // Price ranges
@@ -187,6 +273,13 @@ export default function ProductsTabScreen() {
   ];
 
   const handleProductPress = (product: Product) => {
+    if (!product?._id) {
+      console.error('❌ Product missing _id:', product);
+      Alert.alert('Error', 'Cannot open product details');
+      return;
+    }
+    
+    console.log('🔄 Navigating to product:', product._id);
     router.push(`/product/${product._id}`);
   };
 
@@ -202,7 +295,7 @@ export default function ProductsTabScreen() {
     selectedVariant: ProductVariant
   ) => {
     try {
-      const success = await addToCart(productId, quantity, selectedVariant.id);
+      const success = await addToCart(productId, quantity, selectedVariant._id);
       if (success) {
         Alert.alert('Success', 'Item added to cart successfully!');
         setShowVariantPopup(false);
@@ -219,7 +312,7 @@ export default function ProductsTabScreen() {
     selectedVariant: ProductVariant
   ) => {
     try {
-      const success = await addToCart(productId, quantity, selectedVariant.id);
+      const success = await addToCart(productId, quantity, selectedVariant._id);
       if (success) {
         router.push('/cart');
       }
@@ -285,6 +378,42 @@ export default function ProductsTabScreen() {
       />
     </View>
   );
+
+  const renderComboPackItem = ({ item, index }: { item: ComboPack; index: number }) => (
+    <View style={viewMode === 'grid' ? styles.gridItem : styles.listItem}>
+      <EnhancedProductCard
+        product={item}
+        onPress={() => handleComboPackPress(item)}
+        onVariantSelect={() => {}} // Combo packs don't have variants
+      />
+    </View>
+  );
+
+  const renderItemBasedOnType = ({ item, index }: { item: Product | ComboPack; index: number }) => {
+    // Check if it's a combo pack or product
+    if ('comboPrice' in item) {
+      // It's a combo pack
+      return renderComboPackItem({ item, index });
+    } else {
+      // It's a product
+      return renderProductItem({ item, index });
+    }
+  };
+
+  const handleComboPackPress = (comboPack: ComboPack) => {
+    if (!comboPack?._id) {
+      console.error('❌ Combo pack missing _id:', comboPack);
+      Alert.alert('Error', 'Cannot open combo pack details');
+      return;
+    }
+    
+    console.log('🔄 Navigating to combo pack:', comboPack._id);
+    // Navigate to combo pack detail page using href
+    router.push({
+      pathname: '/combopack/[id]',
+      params: { id: comboPack._id }
+    } as any);
+  };
 
   const renderFilterModal = () => (
     <Modal
@@ -420,7 +549,7 @@ export default function ProductsTabScreen() {
     </Modal>
   );
 
-  const categories = ['All', ...state.categories];
+  const categories = ['All', 'Combo Packs', ...state.categories];
   const activeFiltersCount = (selectedPriceRange ? 1 : 0) + (selectedRating > 0 ? 1 : 0);
 
   return (
@@ -431,7 +560,7 @@ export default function ProductsTabScreen() {
       <View style={styles.header}>
         <View style={styles.headerLeft}>
           <Text style={styles.headerTitle}>Products</Text>
-          <Text style={styles.productCount}>{filteredProducts.length} items</Text>
+          <Text style={styles.productCount}>{filteredItems.length} items</Text>
         </View>
         <TouchableOpacity style={styles.authButton} onPress={handleAuth}>
           <Ionicons
@@ -460,6 +589,8 @@ export default function ProductsTabScreen() {
           )}
         </View>
       </View>
+
+
 
       {/* Categories */}
       <View style={styles.categoriesContainer}>
@@ -499,17 +630,17 @@ export default function ProductsTabScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Products Grid/List */}
-      {state.loading.products ? (
+      {/* Products/Combo Packs Grid/List */}
+      {(state.loading.products || state.loading.comboPacks) ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.PRIMARY} />
-          <Text style={styles.loadingText}>Loading products...</Text>
+          <Text style={styles.loadingText}>Loading items...</Text>
         </View>
       ) : (
         <FlatList
-          data={filteredProducts}
-          renderItem={renderProductItem}
-          keyExtractor={(item) => item._id}
+          data={filteredItems}
+          renderItem={renderItemBasedOnType}
+          keyExtractor={(item) => item._id || `item-${Math.random()}`}
           numColumns={viewMode === 'grid' ? 2 : 1}
           key={viewMode}
           contentContainerStyle={styles.productsList}
@@ -518,7 +649,7 @@ export default function ProductsTabScreen() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="search" size={64} color={COLORS.GRAY} />
-              <Text style={styles.emptyTitle}>No products found</Text>
+              <Text style={styles.emptyTitle}>No items found</Text>
               <Text style={styles.emptySubtitle}>
                 Try adjusting your search or filters
               </Text>
