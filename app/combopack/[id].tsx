@@ -49,7 +49,7 @@ export default function ComboPackDetailScreen() {
   }, [id]);
 
   useEffect(() => {
-    if (comboPack) {
+    if (comboPack && comboPack._id) {
       console.log('🛍️ Checking wishlist state for combo pack:', comboPack._id);
       setWishlisted(isComboInWishlist(comboPack._id));
     }
