@@ -214,6 +214,8 @@ export default function SearchBar({
     setCombinedSuggestions([]); // Clear suggestions
     setShowSuggestions(false);
     searchInputRef.current?.blur();
+    // Notify parent to clear search
+    onSearch('');
   };
 
   const handleToggle = () => {

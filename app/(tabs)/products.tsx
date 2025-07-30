@@ -366,6 +366,9 @@ export default function ProductsTabScreen() {
 
   const clearSearch = () => {
     setSearchQuery('');
+    setSearchExpanded(false);
+    setShouldHideHeader(false);
+    console.log('🧹 Search cleared, showing all products');
   };
 
   const handleAuth = () => {
@@ -527,8 +530,14 @@ export default function ProductsTabScreen() {
           <TouchableOpacity
             style={styles.clearFiltersButton}
             onPress={() => {
+              // Clear all filters including search and category
               setSelectedPriceRange('');
               setSelectedRating(0);
+              setSelectedCategory('All');
+              setSearchQuery('');
+              setSearchExpanded(false);
+              setShouldHideHeader(false);
+              console.log('🧹 Cleared all filters and search');
             }}
           >
             <Text style={styles.clearFiltersText}>Clear All</Text>
@@ -638,6 +647,34 @@ export default function ProductsTabScreen() {
           contentContainerStyle={styles.categoriesList}
         />
       </View>
+
+      {/* Show All Products Button - appears when filters/search are active */}
+      {(searchQuery.trim() || selectedCategory !== 'All' || selectedPriceRange || selectedRating > 0) && (
+        <View style={styles.showAllContainer}>
+          <TouchableOpacity
+            style={styles.showAllButton}
+            onPress={() => {
+              setSearchQuery('');
+              setSelectedCategory('All');
+              setSelectedPriceRange('');
+              setSelectedRating(0);
+              setSearchExpanded(false);
+              setShouldHideHeader(false);
+              console.log('🏠 Showing all products - reset filters');
+            }}
+          >
+            <Ionicons name="refresh-outline" size={18} color={COLORS.WHITE} />
+            <Text style={styles.showAllText}>Show All Products</Text>
+          </TouchableOpacity>
+          <Text style={styles.activeFiltersText}>
+            {filteredItems.length} of {allProducts.length} items shown
+            {searchQuery.trim() && ` • Search: "${searchQuery}"`}
+            {selectedCategory !== 'All' && ` • Category: ${selectedCategory}`}
+            {selectedPriceRange && ` • Price filter`}
+            {selectedRating > 0 && ` • Rating: ${selectedRating}+ stars`}
+          </Text>
+        </View>
+      )}
 
       {/* Controls */}
       <View style={styles.controlsContainer}>
@@ -982,5 +1019,36 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: COLORS.WHITE,
+  },
+  
+  // Show All Products button styles
+  showAllContainer: {
+    backgroundColor: COLORS.WHITE,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.BORDER,
+  },
+  showAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.PRIMARY,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginBottom: 8,
+    gap: 8,
+  },
+  showAllText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.WHITE,
+  },
+  activeFiltersText: {
+    fontSize: 12,
+    color: COLORS.TEXT_SECONDARY,
+    textAlign: 'center',
+    lineHeight: 16,
   },
 });

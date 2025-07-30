@@ -45,7 +45,7 @@ export default function WishlistScreen() {
     if (!isAuthenticated) {
       router.replace('/auth');
       return;
-    }
+    }    
     fetchWishlist();
   }, [isAuthenticated]);
 

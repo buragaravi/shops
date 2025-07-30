@@ -18,6 +18,8 @@ import { COLORS } from '../constants';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import ApiService from '../services/apiService';
+import CoinRedemptionWidget from '../components/CoinRedemptionWidget';
+import OrderSuccessModal from '../components/OrderSuccessModal';
 import type { CartItem, Address, Order } from '../services/apiService';
 
 // A simple progress indicator component
@@ -102,6 +104,9 @@ export default function CheckoutScreen() {
   const [userCoins, setUserCoins] = useState(0);
   const [coinsToRedeem, setCoinsToRedeem] = useState('');
   const [coinLoading, setCoinLoading] = useState(false);
+
+  // Success Modal state
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -411,7 +416,6 @@ export default function CheckoutScreen() {
       const result = await placeOrder(orderData);
       if (result) {
         setOrderResult(result);
-        setCurrentStep(4);
         await clearCart();
         
         // Reset coupon and coin discount states
@@ -419,6 +423,9 @@ export default function CheckoutScreen() {
         setCoinDiscount(null);
         setCouponCode('');
         setCoinsToRedeem('');
+        
+        // Show success modal instead of step 4
+        setShowSuccessModal(true);
       } else {
         Alert.alert('Order Failed', state.errors.orders || 'Could not place your order. Please try again.');
       }
@@ -549,47 +556,28 @@ export default function CheckoutScreen() {
         )}
       </View>
 
-      {/* Coin Redemption Section */}
+      {/* Enhanced Coin Redemption Section */}
       {userCoins > 0 && (
-        <View style={styles.coinContainer}>
-          <Text style={styles.sectionTitle}>Redeem Indira Coins</Text>
-          <Text style={styles.coinBalanceText}>Available: {userCoins} coins</Text>
-          {coinDiscount ? (
-            <View style={styles.appliedCouponContainer}>
-              <View style={styles.appliedCouponInfo}>
-                <Ionicons name="star" size={16} color={COLORS.WARNING} />
-                <Text style={styles.appliedCouponText}>{coinDiscount.coinsUsed} coins used</Text>
-                <Text style={styles.appliedCouponDiscount}>
-                  -₹{coinDiscount.discountAmount.toLocaleString()}
-                </Text>
-              </View>
-              <TouchableOpacity onPress={removeCoinDiscount}>
-                <Ionicons name="close-circle" size={24} color={COLORS.ERROR} />
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.couponInputContainer}>
-              <TextInput
-                style={styles.couponInput}
-                placeholder="Enter coins to redeem"
-                value={coinsToRedeem}
-                onChangeText={setCoinsToRedeem}
-                keyboardType="numeric"
-              />
-              <TouchableOpacity 
-                style={[styles.applyCouponButton, coinLoading && styles.disabledButton]} 
-                onPress={applyCoinDiscount}
-                disabled={coinLoading}
-              >
-                {coinLoading ? (
-                  <ActivityIndicator size="small" color={COLORS.WHITE} />
-                ) : (
-                  <Text style={styles.applyCouponText}>Redeem</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
+        <CoinRedemptionWidget
+          orderValue={subtotal}
+          onDiscountApply={(discountData) => {
+            if (discountData) {
+              setCoinDiscount({
+                coinsUsed: discountData.coinsUsed,
+                discountAmount: discountData.discountAmount
+              });
+              setCoinsToRedeem(discountData.coinsUsed.toString());
+            } else {
+              setCoinDiscount(null);
+              setCoinsToRedeem('');
+            }
+          }}
+          appliedCoinDiscount={coinDiscount ? {
+            coinsUsed: coinDiscount.coinsUsed,
+            discountAmount: coinDiscount.discountAmount,
+            type: 'coins' as const
+          } : null}
+        />
       )}
     </ScrollView>
   );
@@ -597,9 +585,9 @@ export default function CheckoutScreen() {
   const renderAddressStep = () => (
     <ScrollView>
       <Text style={styles.sectionTitle}>Select Delivery Address</Text>
-      {addresses.map((addr: Address) => (
+      {addresses.map((addr: Address, index: number) => (
         <TouchableOpacity 
-          key={addr._id}
+          key={addr._id || `address-${index}`}
           style={[styles.addressItem, selectedAddress?._id === addr._id && styles.addressItemSelected]} 
           onPress={() => setSelectedAddress(addr)}
         >
@@ -746,6 +734,28 @@ export default function CheckoutScreen() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Success Modal */}
+      <OrderSuccessModal
+        visible={showSuccessModal}
+        onClose={() => {
+          setShowSuccessModal(false);
+          router.replace('/(tabs)');
+        }}
+        orderDetails={{
+          orderId: orderResult?._id?.slice(-6) || '',
+          totalAmount: total,
+          discountAmount: coinDiscountAmount + couponDiscount,
+          deliveryAddress: selectedAddress || undefined,
+          estimatedDelivery: '3-5 business days',
+          paymentMethod: paymentMethod === 'cod' ? 'Cash on Delivery' : 'Online Payment',
+          items: state.cartItems.map(item => ({
+            name: item.name || 'Unknown',
+            quantity: item.qty,
+            price: item.price || 0
+          }))
+        }}
+      />
     </SafeAreaView>
   );
 }
