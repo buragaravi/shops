@@ -285,6 +285,11 @@ class ApiService {
     return this.makeRequest(`${API_ENDPOINTS.PRODUCTS.SEARCH}?q=${encodeURIComponent(query)}&page=${page}`);
   }
 
+  // Note: Search suggestions are now handled frontend-only via SearchService
+  // static async searchSuggestions(query: string): Promise<ApiResponse<{ categories: string[]; products: Product[] }>> {
+  //   return this.makeRequest(`${API_ENDPOINTS.PRODUCTS.SUGGESTIONS}?q=${encodeURIComponent(query)}`);
+  // }
+
   static async getProductsByCategory(category: string, page = 1): Promise<ApiResponse<{ products: Product[]; total: number }>> {
     return this.makeRequest(`${API_ENDPOINTS.PRODUCTS.BY_CATEGORY(category)}?page=${page}`);
   }

@@ -1,63 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text } from 'react-native';
 import { COLORS } from '../../constants';
-import { CartManager } from '../../utils/cartWishlistManager';
 
-// Badge component for cart and wishlist counts
-const TabBadge = ({ count, color }: { count: number; color: string }) => {
-  if (count === 0) return null;
-  
-  return (
-    <View style={{
-      position: 'absolute',
-      top: -2,
-      right: -6,
-      backgroundColor: '#dc2626',
-      borderRadius: 10,
-      minWidth: 18,
-      height: 18,
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 4,
-    }}>
-      <Text style={{
-        color: '#ffffff',
-        fontSize: 10,
-        fontWeight: 'bold',
-      }}>
-        {count > 99 ? '99+' : count}
-      </Text>
-    </View>
-  );
-};
-
-// Cart icon with badge
-const CartIcon = ({ color, size }: { color: string; size: number }) => {
-  const [cartCount, setCartCount] = useState(0);
-
-  useEffect(() => {
-    const updateCartCount = async () => {
-      const count = await CartManager.getCartCount();
-      setCartCount(count);
-    };
-
-    updateCartCount();
-    
-    // Set up interval to update count periodically
-    const interval = setInterval(updateCartCount, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
-  return (
-    <View style={{ position: 'relative' }}>
-      <Ionicons name="bag" size={size} color={color} />
-      <TabBadge count={cartCount} color={color} />
-    </View>
-  );
-};
-
+// Extremely simplified version to isolate the infinite render issue
 export default function TabLayout() {
   return (
     <Tabs
@@ -101,7 +47,7 @@ export default function TabLayout() {
         options={{
           title: 'Cart',
           tabBarIcon: ({ color, size }) => (
-            <CartIcon color={color} size={size} />
+            <Ionicons name="bag" size={size} color={color} />
           ),
         }}
       />

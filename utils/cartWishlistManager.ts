@@ -418,7 +418,8 @@ export class CartManager {
   static async getCartCount(): Promise<number> {
     try {
       const cartItems = await this.getCartItems();
-      return cartItems.reduce((sum, item) => sum + item.quantity, 0);
+      const count = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+      return count;
     } catch (error) {
       console.error('Error getting cart count:', error);
       return 0;

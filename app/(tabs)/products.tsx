@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,8 @@ import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
 import EnhancedProductCard from '../../components/product/EnhancedProductCard';
 import VariantPopup from '../../components/VariantPopup';
+import SearchBar from '../../components/SearchBar';
+import { SearchService } from '../../services/searchService';
 import type { Product, ProductVariant, ComboPack } from '../../services/apiService';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -69,6 +71,15 @@ export default function ProductsTabScreen() {
   const [selectedRating, setSelectedRating] = useState<number>(0);
   const [selectedSort, setSelectedSort] = useState<string>('featured');
   
+  // Search-related states
+  const [searchExpanded, setSearchExpanded] = useState(!!initialSearch); // Expand if there's initial search
+  const [shouldHideHeader, setShouldHideHeader] = useState(!!initialSearch); // Hide header if there's initial search
+  
+  // Memoize the combined products array to prevent infinite re-renders
+  const allProducts = useMemo(() => {
+    return [...state.products, ...state.comboPacks];
+  }, [state.products, state.comboPacks]);
+  
   // Filter modal states
   const [showFilters, setShowFilters] = useState(false);
   const [showSortModal, setShowSortModal] = useState(false);
@@ -84,6 +95,20 @@ export default function ProductsTabScreen() {
   useEffect(() => {
     loadInitialData();
   }, []);
+
+  // Handle URL parameter changes (e.g., from home page search)
+  useEffect(() => {
+    if (initialSearch && initialSearch !== searchQuery) {
+      setSearchQuery(initialSearch);
+      setSearchExpanded(true);
+      setShouldHideHeader(true);
+      console.log('🔍 Applied initial search from URL:', initialSearch);
+    }
+    if (initialCategory && initialCategory !== selectedCategory) {
+      setSelectedCategory(initialCategory);
+      console.log('📂 Applied initial category from URL:', initialCategory);
+    }
+  }, [initialSearch, initialCategory]);
 
   useEffect(() => {
     filterAndSortProducts();
@@ -178,44 +203,44 @@ export default function ProductsTabScreen() {
       });
     }
 
-    // Filter by search query
+    // Filter by search query using SearchService
     if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      combinedItems = combinedItems.filter(item => {
-        // Check if it's a combo pack or product
-        if ('comboPrice' in item) {
-          // It's a combo pack
-          return item.name.toLowerCase().includes(query) ||
-                 item.description?.toLowerCase().includes(query);
-        } else {
-          // It's a product
-          return item.name.toLowerCase().includes(query) ||
-                 item.description?.toLowerCase().includes(query) ||
-                 item.category?.toLowerCase().includes(query);
-        }
+      const searchResult = SearchService.search(searchQuery, combinedItems, state.categories, {
+        category: selectedCategory !== 'All' ? selectedCategory : undefined,
+        minPrice: selectedPriceRange ? priceRanges.find(r => r.id === selectedPriceRange)?.value?.min : undefined,
+        maxPrice: selectedPriceRange ? priceRanges.find(r => r.id === selectedPriceRange)?.value?.max : undefined,
+        rating: selectedRating > 0 ? selectedRating : undefined
       });
-    }
+      combinedItems = searchResult.products;
+      console.log('🔍 Search results:', {
+        query: searchQuery,
+        resultsCount: combinedItems.length,
+        totalSearched: combinedItems.length
+      });
+    } else {
+      // Apply other filters when no search query
+      
+      // Filter by price range
+      if (selectedPriceRange) {
+        const range = priceRanges.find(r => r.id === selectedPriceRange)?.value;
+        if (range && typeof range === 'object') {
+          combinedItems = combinedItems.filter(item => {
+            const price = 'comboPrice' in item ? item.comboPrice : (item.originalPrice || item.price);
+            return price >= range.min && price <= range.max;
+          });
+        }
+      }
 
-    // Filter by price range
-    if (selectedPriceRange) {
-      const range = priceRanges.find(r => r.id === selectedPriceRange)?.value;
-      if (range && typeof range === 'object') {
+      // Filter by rating (only applies to products)
+      if (selectedRating > 0) {
         combinedItems = combinedItems.filter(item => {
-          const price = 'comboPrice' in item ? item.comboPrice : (item.originalPrice || item.price);
-          return price >= range.min && price <= range.max;
+          if ('comboPrice' in item) {
+            return true; // Keep all combo packs when rating filter is applied
+          } else {
+            return (item.rating || 0) >= selectedRating;
+          }
         });
       }
-    }
-
-    // Filter by rating (only applies to products)
-    if (selectedRating > 0) {
-      combinedItems = combinedItems.filter(item => {
-        if ('comboPrice' in item) {
-          return true; // Keep all combo packs when rating filter is applied
-        } else {
-          return (item.rating || 0) >= selectedRating;
-        }
-      });
     }
 
     // Sort items
@@ -324,6 +349,19 @@ export default function ProductsTabScreen() {
 
   const handleSearch = (query: string) => {
     setSearchQuery(query);
+    // Close the search expansion when search is performed
+    setSearchExpanded(false);
+    setShouldHideHeader(false);
+    // Note: SearchBar component now handles its own suggestions
+    // No need to set suggestions here to avoid re-render loops
+  };
+
+  const handleSearchToggle = () => {
+    setSearchExpanded(!searchExpanded);
+  };
+
+  const handleSearchExpandedChange = (expanded: boolean) => {
+    setShouldHideHeader(expanded);
   };
 
   const clearSearch = () => {
@@ -556,35 +594,32 @@ export default function ProductsTabScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor={COLORS.WHITE} />
       
-      {/* Header */}
+      {/* Header with Search */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.headerTitle}>Products</Text>
-          <Text style={styles.productCount}>{filteredItems.length} items</Text>
-        </View>
-        <TouchableOpacity style={styles.authButton} onPress={handleAuth}>
-          <Ionicons
-            name={isAuthenticated ? 'person-circle-outline' : 'log-in-outline'}
-            size={24}
-            color={COLORS.PRIMARY}
+        {!shouldHideHeader && (
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerTitle}>Products</Text>
+            <Text style={styles.productCount}>{filteredItems.length} items</Text>
+          </View>
+        )}
+        <View style={[styles.headerRight, shouldHideHeader && styles.headerRightExpanded]}>
+          <SearchBar
+            isExpanded={searchExpanded}
+            onToggle={handleSearchToggle}
+            onSearch={handleSearch}
+            currentPage="products"
+            products={allProducts}
+            categories={state.categories}
+            onExpandedChange={handleSearchExpandedChange}
+            initialQuery={searchQuery}
           />
-        </TouchableOpacity>
-      </View>
-
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchInputContainer}>
-          <Ionicons name="search" size={20} color={COLORS.GRAY} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search products..."
-            value={searchQuery}
-            onChangeText={handleSearch}
-            placeholderTextColor={COLORS.GRAY}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={clearSearch}>
-              <Ionicons name="close-circle" size={20} color={COLORS.GRAY} />
+          {!shouldHideHeader && (
+            <TouchableOpacity style={styles.authButton} onPress={handleAuth}>
+              <Ionicons
+                name={isAuthenticated ? 'person-circle-outline' : 'log-in-outline'}
+                size={24}
+                color={COLORS.PRIMARY}
+              />
             </TouchableOpacity>
           )}
         </View>
@@ -694,6 +729,16 @@ const styles = StyleSheet.create({
   },
   headerLeft: {
     flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerRightExpanded: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 0,
   },
   headerTitle: {
     fontSize: 24,

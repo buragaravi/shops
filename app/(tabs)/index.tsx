@@ -17,6 +17,8 @@ import { useRouter } from 'expo-router';
 import { COLORS } from '../../constants';
 import { useApp } from '../../contexts/AppContext';
 import { useAuth } from '../../contexts/AuthContext';
+import SearchBar from '../../components/SearchBar';
+import { SearchService } from '../../services/searchService';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -25,24 +27,12 @@ export default function HomeScreen() {
   const { user, isAuthenticated, logout, loading } = useAuth();
   const { state, loadCategories } = useApp();
   const [refreshing, setRefreshing] = useState(false);
-
-  // Debug authentication state
-  console.log('HomeScreen - isAuthenticated:', isAuthenticated);
-  console.log('HomeScreen - user:', user);
-  console.log('HomeScreen - auth loading:', loading);
+  const [searchExpanded, setSearchExpanded] = useState(false);
+  const [shouldHideHeader, setShouldHideHeader] = useState(false);
 
   useEffect(() => {
     loadInitialData();
   }, []);
-
-  // Also add effect to track auth state changes
-  useEffect(() => {
-    console.log('🏠 HomeScreen auth state changed:');
-    console.log('  - isAuthenticated:', isAuthenticated);
-    console.log('  - user:', user?.firstName || 'null');
-    console.log('  - loading:', loading);
-    console.log('  - token exists:', !!user);
-  }, [isAuthenticated, user, loading]);
 
   // Load initial data
   const loadInitialData = async () => {
@@ -80,6 +70,25 @@ export default function HomeScreen() {
     } else {
       router.push('/auth');
     }
+  };
+
+  // Search handlers
+  const handleSearchToggle = () => {
+    setSearchExpanded(!searchExpanded);
+  };
+
+  const handleSearchExpandedChange = (expanded: boolean) => {
+    setShouldHideHeader(expanded);
+  };
+
+  const handleSearch = async (query: string) => {
+    console.log('🔍 Home search:', query);
+    
+    // Navigate to products page with search
+    router.push({
+      pathname: '/(tabs)/products',
+      params: { search: query }
+    });
   };
 
   const quickActions = [
@@ -140,29 +149,43 @@ export default function HomeScreen() {
       
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <Text style={styles.appName}>IndiraShop</Text>
-          <Text style={styles.tagline}>Quality Groceries Delivered</Text>
-        </View>
+        {!shouldHideHeader && (
+          <View style={styles.headerLeft}>
+            <Text style={styles.appName}>IndiraShop</Text>
+            <Text style={styles.tagline}>Quality Groceries Delivered</Text>
+          </View>
+        )}
         
-        <View style={styles.headerRight}>
-          {isAuthenticated ? (
-            <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/profile')}>
-              <View style={styles.profileAvatar}>
-                <Text style={styles.profileInitial}>
-                  {user?.firstName?.charAt(0)?.toUpperCase() || 'U'}
-                </Text>
-              </View>
-              <View style={styles.profileInfo}>
-                <Text style={styles.profileName}>Hi, {user?.firstName || 'User'}</Text>
-                <Text style={styles.profileEmail}>{user?.email || ''}</Text>
-              </View>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity style={styles.loginButton} onPress={handleAuth}>
-              <Ionicons name="log-in-outline" size={20} color={COLORS.WHITE} />
-              <Text style={styles.loginButtonText}>Sign In</Text>
-            </TouchableOpacity>
+        <View style={[styles.headerRight, shouldHideHeader && styles.headerRightExpanded]}>
+          <SearchBar
+            isExpanded={searchExpanded}
+            onToggle={handleSearchToggle}
+            onSearch={handleSearch}
+            currentPage="home"
+            categories={state.categories}
+            onExpandedChange={handleSearchExpandedChange}
+          />
+          {!shouldHideHeader && (
+            <>
+              {isAuthenticated ? (
+                <TouchableOpacity style={styles.profileButton} onPress={() => router.push('/profile')}>
+                  <View style={styles.profileAvatar}>
+                    <Text style={styles.profileInitial}>
+                      {user?.firstName?.charAt(0)?.toUpperCase() || 'U'}
+                    </Text>
+                  </View>
+                  <View style={styles.profileInfo}>
+                    <Text style={styles.profileName}>Hi, {user?.firstName || 'User'}</Text>
+                    <Text style={styles.profileEmail}>{user?.phone || ''}</Text>
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity style={styles.loginButton} onPress={handleAuth}>
+                  <Ionicons name="log-in-outline" size={20} color={COLORS.WHITE} />
+                  <Text style={styles.loginButtonText}>Sign In</Text>
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
       </View>
@@ -252,7 +275,14 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   headerRight: {
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerRightExpanded: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 0,
   },
   profileButton: {
     flexDirection: 'row',

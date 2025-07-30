@@ -20,6 +20,7 @@ export const API_ENDPOINTS = {
     BY_ID: (id: string) => `/api/products/${id}`,
     BY_CATEGORY: (category: string) => `/api/products/category/${category}`,
     SEARCH: '/api/products/search',
+    // SUGGESTIONS: '/api/products/search/suggestions', // Removed - using frontend suggestions
     FEATURED: '/api/products/featured',
     REVIEWS: (id: string) => `/api/products/${id}/reviews`,
   },
